@@ -4,5 +4,12 @@ module top;
         logic x;
     } x;
     assign x.x = 1;
-    assign x.y = 0;
+    initial begin
+        ;
+        ;
+        ;
+        x.y = 0;
+        ;
+        ;
+    end
 endmodule

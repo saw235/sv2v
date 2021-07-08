@@ -63,7 +63,7 @@ module Convert.Scoper
 
 import Control.Monad.State.Strict
 import Data.Functor.Identity (runIdentity)
-import Data.List (intercalate)
+import Data.List (intercalate, isPrefixOf)
 import Data.Maybe (isNothing)
 import qualified Data.Map.Strict as Map
 
@@ -100,6 +100,7 @@ data Scopes a = Scopes
     , sProcedureLoc :: [Access]
     , sInjectedItems :: [ModuleItem]
     , sInjectedDecls :: [Decl]
+    , sLatestPos :: String
     } deriving Show
 
 extractMapping :: Scopes a -> Map.Map Identifier a
@@ -332,8 +333,13 @@ debugLocationM :: Monad m => ScoperT a m String
 debugLocationM = gets debugLocation
 
 debugLocation :: Scopes a -> String
-debugLocation = intercalate "." . map toStr . sCurrent
+debugLocation s =
+    if null pos
+        then loc
+        else loc ++ ", near " ++ pos
     where
+        loc = intercalate "." $ map toStr $ sCurrent s
+        pos = sLatestPos s
         toStr :: Tier -> String
         toStr (Tier "" _) = "<unnamed_block>"
         toStr (Tier x "") = x
@@ -401,7 +407,7 @@ runScoperT declMapper moduleItemMapper genItemMapper stmtMapper topName items =
         operation = do
             enterScope topName ""
             mapM wrappedModuleItemMapper items
-        initialState = Scopes [] Map.empty [] [] []
+        initialState = Scopes [] Map.empty [] [] [] ""
 
         wrappedModuleItemMapper = scopeModuleItemT
             declMapper moduleItemMapper genItemMapper stmtMapper
@@ -414,7 +420,7 @@ scopeModuleItemT
     -> MapperM (ScoperT a m) Stmt
     -> ModuleItem
     -> ScoperT a m ModuleItem
-scopeModuleItemT declMapper moduleItemMapper genItemMapper stmtMapper =
+scopeModuleItemT declMapperRaw moduleItemMapper genItemMapper stmtMapperRaw =
     wrappedModuleItemMapper
     where
         fullStmtMapper :: Stmt -> ScoperT a m Stmt
@@ -431,6 +437,22 @@ scopeModuleItemT declMapper moduleItemMapper genItemMapper stmtMapper =
             if null injected
                 then traverseSinglyNestedStmtsM fullStmtMapper stmt'
                 else fullStmtMapper $ Block Seq "" injected [stmt']
+
+        tracePrefix = "Trace: "
+
+        declMapper :: Decl -> ScoperT a m Decl
+        declMapper (CommentDecl c) = do
+            when (tracePrefix `isPrefixOf` c) $
+                modify' $ \s -> s { sLatestPos = drop (length tracePrefix) c }
+            declMapperRaw $ CommentDecl c
+        declMapper decl = declMapperRaw decl
+
+        stmtMapper :: Stmt -> ScoperT a m Stmt
+        stmtMapper (CommentStmt c) = do
+            when (tracePrefix `isPrefixOf` c) $
+                modify' $ \s -> s { sLatestPos = drop (length tracePrefix) c }
+            stmtMapperRaw $ CommentStmt c
+        stmtMapper stmt = stmtMapperRaw stmt
 
         -- converts a decl and adds decls injected during conversion
         declMapper' :: Decl -> ScoperT a m [Decl]
