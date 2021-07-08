@@ -50,6 +50,8 @@ module Convert.Scoper
     , withinProcedureM
     , procedureLoc
     , procedureLocM
+    , debugLocation
+    , debugLocationM
     , isLoopVar
     , isLoopVarM
     , lookupLocalIdent
@@ -61,6 +63,7 @@ module Convert.Scoper
 
 import Control.Monad.State.Strict
 import Data.Functor.Identity (runIdentity)
+import Data.List (intercalate)
 import Data.Maybe (isNothing)
 import qualified Data.Map.Strict as Map
 
@@ -324,6 +327,17 @@ procedureLocM = gets procedureLoc
 
 procedureLoc :: Scopes a -> [Access]
 procedureLoc = sProcedureLoc
+
+debugLocationM :: Monad m => ScoperT a m String
+debugLocationM = gets debugLocation
+
+debugLocation :: Scopes a -> String
+debugLocation = intercalate "." . map toStr . sCurrent
+    where
+        toStr :: Tier -> String
+        toStr (Tier "" _) = "<unnamed_block>"
+        toStr (Tier x "") = x
+        toStr (Tier x y) = x ++ '[' : y ++ "]"
 
 isLoopVar :: Scopes a -> Identifier -> Bool
 isLoopVar scopes x = any matches $ sCurrent scopes

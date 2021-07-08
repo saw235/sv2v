@@ -369,7 +369,7 @@ convertSubExpr scopes (Dot e x) =
         (fieldType, undotted)
     where
         (subExprType, e') = convertSubExpr scopes e
-        (fieldType, bounds, dims) = lookupFieldInfo subExprType x
+        (fieldType, bounds, dims) = lookupFieldInfo scopes subExprType e' x
         base = fst bounds
         len = rangeSize bounds
         undotted = if null dims || rangeSize (head dims) == RawNum 1
@@ -389,7 +389,7 @@ convertSubExpr scopes (Range (Dot e x) NonIndexed rOuter) =
         (_, roRight') = convertSubExpr scopes roRight
         rOuter' = (roLeft', roRight')
         orig' = Range (Dot e' x) NonIndexed rOuter'
-        (fieldType, bounds, dims) = lookupFieldInfo subExprType x
+        (fieldType, bounds, dims) = lookupFieldInfo scopes subExprType e' x
         [dim] = dims
         rangeLeft = ( BinOp Sub (fst bounds) $ BinOp Sub (fst dim) roLeft'
                     , BinOp Sub (fst bounds) $ BinOp Sub (fst dim) roRight' )
@@ -409,7 +409,7 @@ convertSubExpr scopes (Range (Dot e x) mode (baseO, lenO)) =
         (_, baseO') = convertSubExpr scopes baseO
         (_, lenO') = convertSubExpr scopes lenO
         orig' = Range (Dot e' x) mode (baseO', lenO')
-        (fieldType, bounds, dims) = lookupFieldInfo subExprType x
+        (fieldType, bounds, dims) = lookupFieldInfo scopes subExprType e' x
         [dim] = dims
         baseLeft  = BinOp Sub (fst bounds) $ BinOp Sub (fst dim) baseO'
         baseRight = BinOp Add (snd bounds) $ BinOp Sub (snd dim) baseO'
@@ -439,7 +439,7 @@ convertSubExpr scopes (Bit (Dot e x) i) =
         (_, i') = convertSubExpr scopes i
         (backupType, _) = fallbackType scopes $ Dot e' x
         orig' = Bit (Dot e' x) i'
-        (fieldType, bounds, dims) = lookupFieldInfo subExprType x
+        (fieldType, bounds, dims) = lookupFieldInfo scopes subExprType e' x
         [dim] = dims
         left  = BinOp Sub (fst bounds) $ BinOp Sub (fst dim) i'
         right = BinOp Add (snd bounds) $ BinOp Sub (snd dim) i'
@@ -493,10 +493,12 @@ isntStruct :: Type -> Bool
 isntStruct = (== Nothing) . getFields
 
 -- get the field type, flattended bounds, and original type dimensions
-lookupFieldInfo :: Type -> Identifier -> (Type, Range, [Range])
-lookupFieldInfo struct fieldName =
+lookupFieldInfo :: Scopes Type -> Type -> Expr -> Identifier -> (Type, Range, [Range])
+lookupFieldInfo scopes struct base fieldName =
     if maybeFieldType == Nothing
         then error $ "field '" ++ fieldName ++ "' not found in " ++ show struct
+                ++ ", in expression " ++ show (Dot base fieldName) ++ " within "
+                ++ debugLocation scopes
         else (fieldType, bounds, dims)
     where
         Just fields = getFields struct
